@@ -1,96 +1,122 @@
+import java.io.*;
 import java.util.*;
 
-// Booking Request
-class BookingRequest {
+// Reservation class (Serializable)
+class Reservation implements Serializable {
     int id;
-    String guestName;
+    String name;
     String roomType;
 
-    BookingRequest(int id, String guestName, String roomType) {
+    Reservation(int id, String name, String roomType) {
         this.id = id;
-        this.guestName = guestName;
+        this.name = name;
         this.roomType = roomType;
     }
-}
 
-// Shared System (Queue + Inventory)
-class BookingSystem {
-
-    Queue<BookingRequest> queue = new LinkedList<>();
-    Map<String, Integer> inventory = new HashMap<>();
-
-    BookingSystem() {
-        inventory.put("Single", 2);
-        inventory.put("Double", 1);
-    }
-
-    // Add request (Producer)
-    synchronized void addRequest(BookingRequest req) {
-        queue.add(req);
-        System.out.println(req.guestName + " added booking request");
-    }
-
-    // Process request (Consumer - Critical Section)
-    synchronized void processRequest() {
-        if (queue.isEmpty()) return;
-
-        BookingRequest req = queue.poll();
-
-        if (!inventory.containsKey(req.roomType)) {
-            System.out.println("Invalid room type for " + req.guestName);
-            return;
-        }
-
-        int available = inventory.get(req.roomType);
-
-        if (available > 0) {
-            // Critical section: allocation + update
-            inventory.put(req.roomType, available - 1);
-            System.out.println("Booking SUCCESS for " + req.guestName +
-                    " (" + req.roomType + ")");
-        } else {
-            System.out.println("Booking FAILED (No rooms) for " + req.guestName);
-        }
+    void display() {
+        System.out.println("ID: " + id +
+                ", Name: " + name +
+                ", RoomType: " + roomType);
     }
 }
 
-// Thread Class
-class BookingProcessor extends Thread {
+// Wrapper class for system state
+class SystemState implements Serializable {
+    List<Reservation> history;
+    Map<String, Integer> inventory;
 
-    BookingSystem system;
-
-    BookingProcessor(BookingSystem system) {
-        this.system = system;
-    }
-
-    public void run() {
-        // Each thread tries to process requests
-        for (int i = 0; i < 3; i++) {
-            system.processRequest();
-            try {
-                Thread.sleep(100); // simulate delay
-            } catch (Exception e) {}
-        }
+    SystemState(List<Reservation> history, Map<String, Integer> inventory) {
+        this.history = history;
+        this.inventory = inventory;
     }
 }
 
 public class BookMyStayApp {
+
+    static final String FILE_NAME = "system_state.dat";
+
     public static void main(String[] args) {
 
-        BookingSystem system = new BookingSystem();
+        List<Reservation> history = new ArrayList<>();
+        Map<String, Integer> inventory = new HashMap<>();
 
-        // Simulate multiple guest requests (concurrent input)
-        system.addRequest(new BookingRequest(1, "Nirmal", "Single"));
-        system.addRequest(new BookingRequest(2, "Arun", "Single"));
-        system.addRequest(new BookingRequest(3, "Priya", "Single")); // extra → fail
-        system.addRequest(new BookingRequest(4, "Kiran", "Double"));
-        system.addRequest(new BookingRequest(5, "Rahul", "Double")); // extra → fail
+        // Step 1: Restore state (on startup)
+        SystemState state = loadState();
 
-        // Multiple threads (concurrent processing)
-        BookingProcessor t1 = new BookingProcessor(system);
-        BookingProcessor t2 = new BookingProcessor(system);
+        if (state != null) {
+            history = state.history;
+            inventory = state.inventory;
+            System.out.println("System state restored from file.");
+        } else {
+            // Default initial state
+            inventory.put("Single", 2);
+            inventory.put("Double", 1);
+            System.out.println("No previous data found. Starting fresh.");
+        }
 
-        t1.start();
-        t2.start();
+        // Step 2: Simulate booking
+        book(1, "Nirmal", "Single", history, inventory);
+        book(2, "Arun", "Double", history, inventory);
+
+        // Step 3: Display current state
+        System.out.println("\n--- Current Bookings ---");
+        for (Reservation r : history) {
+            r.display();
+        }
+
+        System.out.println("\n--- Inventory ---");
+        for (String key : inventory.keySet()) {
+            System.out.println(key + ": " + inventory.get(key));
+        }
+
+        // Step 4: Save state (before shutdown)
+        saveState(new SystemState(history, inventory));
+        System.out.println("\nSystem state saved successfully.");
+    }
+
+    // Booking logic
+    static void book(int id, String name, String type,
+                     List<Reservation> history,
+                     Map<String, Integer> inventory) {
+
+        if (!inventory.containsKey(type) || inventory.get(type) <= 0) {
+            System.out.println("Booking failed for " + name);
+            return;
+        }
+
+        inventory.put(type, inventory.get(type) - 1);
+        history.add(new Reservation(id, name, type));
+
+        System.out.println("Booking successful for " + name);
+    }
+
+    // Save (Serialization)
+    static void saveState(SystemState state) {
+        try {
+            ObjectOutputStream oos =
+                    new ObjectOutputStream(new FileOutputStream(FILE_NAME));
+            oos.writeObject(state);
+            oos.close();
+        } catch (IOException e) {
+            System.out.println("Error saving state: " + e.getMessage());
+        }
+    }
+
+    // Load (Deserialization)
+    static SystemState loadState() {
+        try {
+            ObjectInputStream ois =
+                    new ObjectInputStream(new FileInputStream(FILE_NAME));
+            SystemState state = (SystemState) ois.readObject();
+            ois.close();
+            return state;
+        } catch (FileNotFoundException e) {
+            // File not found → first run
+            return null;
+        } catch (Exception e) {
+            // Corrupted file or error
+            System.out.println("Error loading state. Starting fresh.");
+            return null;
+        }
     }
 }
