@@ -1,61 +1,89 @@
 import java.util.*;
 
+// Custom Exception for Invalid Booking
+class InvalidBookingException extends Exception {
+    public InvalidBookingException(String message) {
+        super(message);
+    }
+}
+
+// Reservation Class
 class Reservation {
     int id;
     String customerName;
-    String date;
-    double amount;
+    String roomType;
 
-    Reservation(int id, String customerName, String date, double amount) {
+    Reservation(int id, String customerName, String roomType) {
         this.id = id;
         this.customerName = customerName;
-        this.date = date;
-        this.amount = amount;
+        this.roomType = roomType;
     }
 
     void display() {
         System.out.println("ID: " + id +
                 ", Name: " + customerName +
-                ", Date: " + date +
-                ", Amount: " + amount);
+                ", Room Type: " + roomType);
     }
 }
 
 public class BookMyStayApp {
     public static void main(String[] args) {
 
-        // Booking History (List maintains insertion order)
-        List<Reservation> bookingHistory = new ArrayList<>();
+        // Room inventory (system state)
+        Map<String, Integer> inventory = new HashMap<>();
+        inventory.put("Single", 2);
+        inventory.put("Double", 1);
 
-        // Booking Report Service logic variables
-        int totalBookings = 0;
-        double totalRevenue = 0;
+        // Booking history
+        List<Reservation> history = new ArrayList<>();
 
-        // Step 1: Booking confirmed and added to history
-        bookingHistory.add(new Reservation(1, "Nirmal", "2026-04-09", 1200));
-        bookingHistory.add(new Reservation(2, "Arun", "2026-04-10", 1500));
-        bookingHistory.add(new Reservation(3, "Priya", "2026-04-11", 2000));
+        // Test bookings (simulate Guest input)
+        tryBooking(1, "Nirmal", "Single", inventory, history);
+        tryBooking(2, "Arun", "Triple", inventory, history); // Invalid type
+        tryBooking(3, "Priya", "Double", inventory, history);
+        tryBooking(4, "Kiran", "Double", inventory, history); // No availability
 
-        // Step 2: Display Booking History (Admin view)
-        System.out.println("--- Booking History ---");
-        for (Reservation r : bookingHistory) {
+        // Display valid bookings
+        System.out.println("\n--- Valid Booking History ---");
+        for (Reservation r : history) {
             r.display();
         }
+    }
 
-        // Step 3: Generate Summary Report (Read-only)
-        for (Reservation r : bookingHistory) {
-            totalBookings++;
-            totalRevenue += r.amount;
+    // Booking process with validation
+    static void tryBooking(int id, String name, String roomType,
+                           Map<String, Integer> inventory,
+                           List<Reservation> history) {
+
+        try {
+            validateBooking(roomType, inventory);
+
+            // If validation passes → update state
+            inventory.put(roomType, inventory.get(roomType) - 1);
+
+            Reservation r = new Reservation(id, name, roomType);
+            history.add(r);
+
+            System.out.println("Booking successful for " + name);
+
+        } catch (InvalidBookingException e) {
+            // Graceful failure handling
+            System.out.println("Booking failed for " + name + ": " + e.getMessage());
+        }
+    }
+
+    // Validator (Fail-Fast Design)
+    static void validateBooking(String roomType, Map<String, Integer> inventory)
+            throws InvalidBookingException {
+
+        // Check 1: Valid room type
+        if (!inventory.containsKey(roomType)) {
+            throw new InvalidBookingException("Invalid room type: " + roomType);
         }
 
-        System.out.println("\n--- Booking Summary Report ---");
-        System.out.println("Total Bookings: " + totalBookings);
-        System.out.println("Total Revenue: " + totalRevenue);
-
-        // Step 4: Detailed Report
-        System.out.println("\n--- Detailed Report ---");
-        for (Reservation r : bookingHistory) {
-            r.display();
+        // Check 2: Availability
+        if (inventory.get(roomType) <= 0) {
+            throw new InvalidBookingException("No rooms available for type: " + roomType);
         }
     }
 }
